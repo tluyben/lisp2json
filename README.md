@@ -37,10 +37,10 @@ lispStr, err := lisp2json.JSON2Lisp("{\"cmd\":\"print\",\"args\":[{\"lit\":\"Hel
 
 ```bash
 # Convert Lisp file to JSON
-lisp2json --lisp example.lsp
+./bin/lisp2json --lisp example.lsp
 
 # Convert JSON file to Lisp
-lisp2json --json example.json
+./bin/lisp2json --json example.json
 ```
 
 ## 🧪 Running Tests

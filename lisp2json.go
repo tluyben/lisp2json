@@ -15,7 +15,6 @@ type LispNode struct {
 	Var  string      `json:"var,omitempty"`
 }
 
-
 func Lisp2JSON(input string) (string, error) {
 	tokens := tokenize(input)
 	var nodes []LispNode
@@ -409,7 +408,7 @@ func (n LispNode) toLisp() string {
 		funcName := n.Args[0].toLisp()
 		params := n.Args[1].toLisp()
 		body := n.Args[2].toLisp()
-		return fmt.Sprintf("(defun %s %s %s)", funcName, params, body)
+		return fmt.Sprintf("(defun %s (%s) %s)", funcName, params, body)
 	}
 
 	// Handle function expressions (#'( ... ))
