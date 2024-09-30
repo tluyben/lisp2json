@@ -71,7 +71,6 @@ func tokenize(input string) []string {
 	var currentToken strings.Builder
 	inString := false
 
-	// lazy but works; 
 	// Preprocess #'( syntax
 	input = preprocessFunctionSyntax(input)	
 
