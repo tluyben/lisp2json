@@ -19,11 +19,10 @@ do
     echo 
     echo "Original:"
     cat examples/example$i.lsp
-    echo 
+    echo
     echo 
     echo "Converted to JSON:"
     cat /tmp/example$i.json
-    echo 
     echo 
     echo "Converted to Lisp:"
     cat /tmp/example$i.lisp
