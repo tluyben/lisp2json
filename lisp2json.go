@@ -34,13 +34,48 @@ func Lisp2JSON(input string) (string, error) {
 	}
 	return string(jsonBytes), nil
 }
-
+func preprocessFunctionSyntax(input string) string {
+	var result strings.Builder
+	i := 0
+	for i < len(input) {
+		if strings.HasPrefix(input[i:], "#'(") {
+			result.WriteString("(function (")
+			i += 3 // Skip "#'("
+			parenCount := 1
+			closingIndex := i
+			for closingIndex < len(input) && parenCount > 0 {
+				if input[closingIndex] == '(' {
+					parenCount++
+				} else if input[closingIndex] == ')' {
+					parenCount--
+				}
+				closingIndex++
+			}
+			if parenCount == 0 {
+				result.WriteString(input[i:closingIndex-1])
+				result.WriteString("))")
+				i = closingIndex
+			} else {
+				// If we didn't find a matching closing parenthesis, just write the original syntax
+				result.WriteString("#'(")
+				i += 3
+			}
+		} else {
+			result.WriteByte(input[i])
+			i++
+		}
+	}
+	return result.String()
+}
 func tokenize(input string) []string {
 	var tokens []string
 	var currentToken strings.Builder
 	inString := false
 
 	// lazy but works; 
+	// Preprocess #'( syntax
+	input = preprocessFunctionSyntax(input)	
+
 	// replace all "'(" with (list ; 
 	input = strings.ReplaceAll(input, "'(", "(list ")
 
@@ -101,7 +136,10 @@ func parseList(tokens []string) (LispNode, []string, error) {
 		return parseLet(tokens)
 	} else if tokens[0] == "defun" {
 		return parseDefun(tokens)
+	} else if tokens[0] == "cond" {
+		return parseCond(tokens)
 	}
+
 
 	var args []LispNode
 	remaining := tokens
@@ -125,7 +163,64 @@ func parseList(tokens []string) (LispNode, []string, error) {
 
 	return LispNode{Cmd: args[0].Var, Args: args[1:]}, remaining[1:], nil
 }
+func parseCond(tokens []string) (LispNode, []string, error) {
+	if len(tokens) < 2 { // "cond" and at least one clause
+		return LispNode{}, tokens, fmt.Errorf("invalid cond expression: not enough arguments")
+	}
 
+	// Skip "cond" token
+	tokens = tokens[1:]
+
+	var clauses []LispNode
+	for len(tokens) > 0 && tokens[0] != ")" {
+		if tokens[0] != "(" {
+			return LispNode{}, tokens, fmt.Errorf("each cond clause must be a list")
+		}
+		clause, remaining, err := parseCondClause(tokens[1:])
+		if err != nil {
+			return LispNode{}, tokens, err
+		}
+		clauses = append(clauses, clause)
+		tokens = remaining
+	}
+
+	if len(tokens) == 0 || tokens[0] != ")" {
+		return LispNode{}, tokens, fmt.Errorf("missing closing parenthesis for cond expression")
+	}
+
+	return LispNode{
+		Cmd:  "cond",
+		Args: clauses,
+	}, tokens[1:], nil
+}
+
+func parseCondClause(tokens []string) (LispNode, []string, error) {
+	var clause LispNode
+	var err error
+
+	// Parse the condition
+	clause.Args = append(clause.Args, LispNode{})
+	clause.Args[0], tokens, err = parse(tokens)
+	if err != nil {
+		return LispNode{}, tokens, err
+	}
+
+	// Parse the consequent (action)
+	for len(tokens) > 0 && tokens[0] != ")" {
+		var consequent LispNode
+		consequent, tokens, err = parse(tokens)
+		if err != nil {
+			return LispNode{}, tokens, err
+		}
+		clause.Args = append(clause.Args, consequent)
+	}
+
+	if len(tokens) == 0 || tokens[0] != ")" {
+		return LispNode{}, tokens, fmt.Errorf("missing closing parenthesis for cond clause")
+	}
+
+	return clause, tokens[1:], nil
+}
 
 func parseLet(tokens []string) (LispNode, []string, error) {
 	if len(tokens) < 4 { // "let", bindings, body, and closing paren
@@ -282,8 +377,6 @@ func parseArgList(tokens []string) (LispNode, []string, error) {
 	return LispNode{Args: args}, tokens[1:], nil // Skip closing ')'
 }
 
-
-
 func (n LispNode) toLisp() string {
 	// Handle variables directly
 	if n.Var != "" {
@@ -297,30 +390,77 @@ func (n LispNode) toLisp() string {
 		}
 		return fmt.Sprintf("%v", n.Lit) // Return other literals (like numbers)
 	}
-	
-	// Process the arguments for the current node
-	args := make([]string, len(n.Args))
-	for i, arg := range n.Args {
-		args[i] = arg.toLisp() // Recursively convert arguments
+
+	// Handle let expressions
+	if n.Cmd == "let" {
+		if len(n.Args) < 2 {
+			return "(let ())"  // Handle empty let
+		}
+		bindings := n.Args[0].toLispLetBindings()
+		body := n.Args[1].toLisp()
+		return fmt.Sprintf("(let %s %s)", bindings, body)
 	}
-	
+
+	// Handle defun expressions
+	if n.Cmd == "defun" {
+		if len(n.Args) < 3 {
+			return fmt.Sprintf("(defun %s ())", n.Args[0].toLisp())  // Handle empty defun
+		}
+		funcName := n.Args[0].toLisp()
+		params := n.Args[1].toLisp()
+		body := n.Args[2].toLisp()
+		return fmt.Sprintf("(defun %s %s %s)", funcName, params, body)
+	}
+
+	// Handle function expressions (#'( ... ))
+	if n.Cmd == "function" {
+		if len(n.Args) == 1 {
+			return fmt.Sprintf("#'%s", n.Args[0].toLisp())
+		}
+		return fmt.Sprintf("#'(%s)", n.Args[0].toLisp())
+	}
+
 	// Handle list expressions ('( ... ))
 	if n.Cmd == "list" {
+		args := make([]string, len(n.Args))
+		for i, arg := range n.Args {
+			args[i] = arg.toLisp()
+		}
 		return fmt.Sprintf("'(%s)", strings.Join(args, " "))
+	}
+
+	// Handle cond expressions
+	if n.Cmd == "cond" {
+		var clauses []string
+		for _, clause := range n.Args {
+			if len(clause.Args) < 2 {
+				continue // Skip invalid clauses
+			}
+			condition := clause.Args[0].toLisp()
+			consequent := make([]string, len(clause.Args)-1)
+			for i, arg := range clause.Args[1:] {
+				consequent[i] = arg.toLisp()
+			}
+			clauses = append(clauses, fmt.Sprintf("(%s %s)", condition, strings.Join(consequent, " ")))
+		}
+		return fmt.Sprintf("(cond %s)", strings.Join(clauses, " "))
 	}
 
 	// Handle function calls or expressions
 	if n.Cmd != "" {
-		// Join command and its arguments with no extra spaces
-		if len(args) == 0 {
-			return fmt.Sprintf("(%s)", n.Cmd)
-		} else {
-			return fmt.Sprintf("(%s %s)", n.Cmd, strings.Join(args, " "))
+		args := make([]string, len(n.Args))
+		for i, arg := range n.Args {
+			args[i] = arg.toLisp()
 		}
+		return fmt.Sprintf("(%s %s)", n.Cmd, strings.Join(args, " "))
 	}
 	
 	// If it's a node without a command (like a list), just join the arguments
-	return fmt.Sprintf("(%s)", strings.Join(args, " "))
+	args := make([]string, len(n.Args))
+	for i, arg := range n.Args {
+		args[i] = arg.toLisp()
+	}
+	return strings.Join(args, " ")
 }
 
 func JSON2Lisp(input string) (string, error) {
@@ -338,3 +478,13 @@ func JSON2Lisp(input string) (string, error) {
 	return strings.Join(lispStrings, "\n"), nil
 }
 
+// Helper function to handle let bindings
+func (n LispNode) toLispLetBindings() string {
+	var bindings []string
+	for _, arg := range n.Args {
+		if arg.Var != "" && len(arg.Args) > 0 {
+			bindings = append(bindings, fmt.Sprintf("(%s %s)", arg.Var, arg.Args[0].toLisp()))
+		}
+	}
+	return fmt.Sprintf("(%s)", strings.Join(bindings, " "))
+}
