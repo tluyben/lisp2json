@@ -218,9 +218,8 @@ Contributions, issues, and feature requests are welcome! Feel free to check the 
 
 ## 👨‍💻 Author
 
-**Your Name**
-
 - GitHub: [@tluyben](https://github.com/tluyben)
+- X: @luyben
 
 ## 🌟 Show your support
 
