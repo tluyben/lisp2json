@@ -34,4 +34,3 @@ done
 # Clean up temporary files
 rm -f /tmp/example*.json /tmp/example*.lisp
 
-echo "All tests passed successfully!"
