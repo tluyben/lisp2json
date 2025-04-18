@@ -52,7 +52,16 @@
 ;; cron based 
 (setq result (bg (fetch "https://xxx.com" :method :get) :block :retry 3 :event :cron "*/15 * * * *" :repeat 10))
 ;; runs this when it's done
-(on result '(lambda (x) (print x))) 
+;; type = success, error, error-retry, etc 
+(on result '(lambda (type x) (print x))) 
+;; but continues immediately here
+(print "hello")
+
+;; cron based 
+(setq result (bg (fetch "https://xxx.com" :method :get) :block :retry 3 :event :cron "*/15 * * * *" :repeat 10 :on-error '(lambda (x) (print x))))
+;; runs this when it's done
+;; type = success, error, error-retry, etc 
+(on result '(lambda (type x) (print x))) 
 ;; but continues immediately here
 (print "hello")
 
