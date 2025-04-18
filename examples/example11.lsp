@@ -49,3 +49,16 @@
 ;; but continues immediately here
 (print "hello")
 
+;; cron based 
+(setq result (bg (fetch "https://xxx.com" :method :get) :block :retry 3 :event :cron "*/15 * * * *" :repeat 10))
+;; runs this when it's done
+(on result '(lambda (x) (print x))) 
+;; but continues immediately here
+(print "hello")
+
+;; mixed durable execution 
+(setq result (bg (fetch "https://xxx.com" :method :get) :block :retry 3 :cron "*/15 * * * *" :repeat 10))
+(print "hello")
+;; runs from here 10x , every 15 minutes
+(print result)
+
