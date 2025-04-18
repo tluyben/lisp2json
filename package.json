@@ -1,0 +1,26 @@
+{
+  "name": "lisp2json",
+  "version": "1.0.0",
+  "description": "Convert Lisp to JSON and back with ease!",
+  "main": "dist/index.js",
+  "bin": {
+    "lisp2json-ts": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "bash testts.sh",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "lisp",
+    "json",
+    "converter",
+    "typescript"
+  ],
+  "author": "tluyben",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  }
+} 
