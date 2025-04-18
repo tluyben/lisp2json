@@ -16,7 +16,19 @@ type LispNode struct {
 }
 
 func Lisp2JSON(input string) (string, error) {
-	tokens := tokenize(input)
+	// Skip lines that start with ;; (Lisp comments)
+	var filteredInput strings.Builder
+	lines := strings.Split(input, "\n")
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmedLine, ";;") {
+			continue // Skip comment lines
+		}
+		filteredInput.WriteString(line)
+		filteredInput.WriteString("\n")
+	}
+
+	tokens := tokenize(filteredInput.String())
 	var nodes []LispNode
 	for len(tokens) > 0 {
 		ast, remainingTokens, err := parse(tokens)
@@ -51,7 +63,7 @@ func preprocessFunctionSyntax(input string) string {
 				closingIndex++
 			}
 			if parenCount == 0 {
-				result.WriteString(input[i:closingIndex-1])
+				result.WriteString(input[i : closingIndex-1])
 				result.WriteString("))")
 				i = closingIndex
 			} else {
@@ -72,9 +84,9 @@ func tokenize(input string) []string {
 	inString := false
 
 	// Preprocess #'( syntax
-	input = preprocessFunctionSyntax(input)	
+	input = preprocessFunctionSyntax(input)
 
-	// replace all "'(" with (list ; 
+	// replace all "'(" with (list ;
 	input = strings.ReplaceAll(input, "'(", "(list ")
 
 	for _, char := range input {
@@ -137,7 +149,6 @@ func parseList(tokens []string) (LispNode, []string, error) {
 	} else if tokens[0] == "cond" {
 		return parseCond(tokens)
 	}
-
 
 	var args []LispNode
 	remaining := tokens
@@ -273,7 +284,7 @@ func parseBindings(tokens []string) (LispNode, []string, error) {
 			return LispNode{}, tokens, fmt.Errorf("each binding must have a variable and a value")
 		}
 
-		varName := tokens[0]           // The variable name (e.g., 'x' or 'y')
+		varName := tokens[0]                           // The variable name (e.g., 'x' or 'y')
 		valueNode, remaining, err := parse(tokens[1:]) // The value associated with the variable
 		if err != nil {
 			return LispNode{}, tokens, err
@@ -348,9 +359,9 @@ func parseDefun(tokens []string) (LispNode, []string, error) {
 	return LispNode{
 		Cmd: "defun",
 		Args: []LispNode{
-			{Var: funcName},    // Function name
-			argListNode,        // Argument list
-			{Args: body}, // Function body
+			{Var: funcName}, // Function name
+			argListNode,     // Argument list
+			{Args: body},    // Function body
 		},
 	}, remaining[1:], nil
 }
@@ -361,7 +372,7 @@ func parseArgList(tokens []string) (LispNode, []string, error) {
 		return LispNode{}, tokens, fmt.Errorf("argument list must start with '('")
 	}
 	tokens = tokens[1:] // Skip '('
-	
+
 	var args []LispNode
 	for len(tokens) > 0 && tokens[0] != ")" {
 		args = append(args, LispNode{Var: tokens[0]}) // Treat each item as a variable
@@ -371,7 +382,7 @@ func parseArgList(tokens []string) (LispNode, []string, error) {
 	if len(tokens) == 0 || tokens[0] != ")" {
 		return LispNode{}, tokens, fmt.Errorf("missing closing parenthesis for argument list")
 	}
-	
+
 	return LispNode{Args: args}, tokens[1:], nil // Skip closing ')'
 }
 
@@ -380,7 +391,7 @@ func (n LispNode) toLisp() string {
 	if n.Var != "" {
 		return n.Var
 	}
-	
+
 	// Handle literals directly
 	if n.Lit != nil {
 		if n.Type == "string" {
@@ -392,7 +403,7 @@ func (n LispNode) toLisp() string {
 	// Handle let expressions
 	if n.Cmd == "let" {
 		if len(n.Args) < 2 {
-			return "(let ())"  // Handle empty let
+			return "(let ())" // Handle empty let
 		}
 		bindings := n.Args[0].toLispLetBindings()
 		body := n.Args[1].toLisp()
@@ -402,7 +413,7 @@ func (n LispNode) toLisp() string {
 	// Handle defun expressions
 	if n.Cmd == "defun" {
 		if len(n.Args) < 3 {
-			return fmt.Sprintf("(defun %s ())", n.Args[0].toLisp())  // Handle empty defun
+			return fmt.Sprintf("(defun %s ())", n.Args[0].toLisp()) // Handle empty defun
 		}
 		funcName := n.Args[0].toLisp()
 		params := n.Args[1].toLisp()
@@ -452,7 +463,7 @@ func (n LispNode) toLisp() string {
 		}
 		return fmt.Sprintf("(%s %s)", n.Cmd, strings.Join(args, " "))
 	}
-	
+
 	// If it's a node without a command (like a list), just join the arguments
 	args := make([]string, len(n.Args))
 	for i, arg := range n.Args {

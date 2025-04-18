@@ -12,7 +12,13 @@ interface LispNode {
  * @returns The JSON representation of the Lisp expression
  */
 export function lisp2JSON(input: string): string {
-  const tokens = tokenize(input);
+  // Skip lines that start with ;; (Lisp comments)
+  const filteredInput = input
+    .split('\n')
+    .filter(line => !line.trim().startsWith(';;'))
+    .join('\n');
+    
+  const tokens = tokenize(filteredInput);
   const nodes: LispNode[] = [];
   
   let remainingTokens = tokens;
