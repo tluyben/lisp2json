@@ -1,6 +1,6 @@
 {
   "name": "lisp2json",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Convert Lisp to JSON and back with ease!",
   "main": "dist/index.js",
   "bin": {
