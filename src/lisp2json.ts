@@ -234,7 +234,7 @@ function parseCond(tokens: string[]): { node: LispNode; remaining: string[] } {
   return {
     node: {
       cmd: "cond",
-      args: clauses
+      args: [{cmd: "list", args: clauses}]
     },
     remaining: tokens.slice(1)
   };
@@ -439,7 +439,7 @@ function parseArgList(tokens: string[]): { node: LispNode; remaining: string[] }
     throw new Error("Missing closing parenthesis for argument list");
   }
   
-  return { node: { args }, remaining: tokens.slice(1) }; // Skip closing ')'
+  return { node: { args: [{cmd: "list", args: args}] }, remaining: tokens.slice(1) }; // Skip closing ')'
 }
 
 /**

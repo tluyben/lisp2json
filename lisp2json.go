@@ -212,7 +212,7 @@ func parseCond(tokens []string) (LispNode, []string, error) {
 
 	return LispNode{
 		Cmd:  "cond",
-		Args: clauses,
+		Args: []LispNode{{Cmd: "list", Args: clauses}},
 	}, tokens[1:], nil
 }
 
@@ -396,7 +396,7 @@ func parseArgList(tokens []string) (LispNode, []string, error) {
 		return LispNode{}, tokens, fmt.Errorf("missing closing parenthesis for argument list")
 	}
 
-	return LispNode{Args: args}, tokens[1:], nil // Skip closing ')'
+	return LispNode{Args: []LispNode{{Cmd: "list", Args: args}}}, tokens[1:], nil // Skip closing ')'
 }
 
 func (n LispNode) toLisp() string {

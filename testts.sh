@@ -5,9 +5,18 @@ set -e
 # Build the TypeScript project
 npm run build
 
+START=1
+END=13
+
+# if there is an argument, START=END=$1 
+if [ $# -gt 0 ]; then
+    START=$1
+    END=$1
+fi
+
 # Run tests for each example
-for i in {1..13}
-do
+for i in $(seq $START $END); do
+   
     echo "Testing example$i.lsp"
     
     # Convert Lisp to JSON
