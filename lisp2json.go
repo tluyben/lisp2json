@@ -8,7 +8,7 @@ import (
 )
 
 type LispNode struct {
-	Cmd  string      `json:"cmd,omitempty"`
+	Cmd  interface{} `json:"cmd,omitempty"` // Can be string or *LispNode
 	Args []LispNode  `json:"args,omitempty"`
 	Lit  interface{} `json:"lit,omitempty"`
 	Type string      `json:"type,omitempty"`
@@ -148,6 +148,8 @@ func parseList(tokens []string) (LispNode, []string, error) {
 		return parseDefun(tokens)
 	} else if tokens[0] == "cond" {
 		return parseCond(tokens)
+	} else if tokens[0] == "lambda" {
+		return parseLambda(tokens)
 	}
 
 	var args []LispNode
@@ -170,6 +172,17 @@ func parseList(tokens []string) (LispNode, []string, error) {
 		return LispNode{}, remaining[1:], nil
 	}
 
+	// Check if the first argument is a function call (like lambda)
+	if args[0].Cmd != nil {
+		// If the first argument is a function call, create a nested structure
+		// where the function is a command that needs to be evaluated first
+		return LispNode{
+			Cmd:  args[0],
+			Args: args[1:],
+		}, remaining[1:], nil
+	}
+
+	// Otherwise, treat the first argument as a variable name
 	return LispNode{Cmd: args[0].Var, Args: args[1:]}, remaining[1:], nil
 }
 func parseCond(tokens []string) (LispNode, []string, error) {
@@ -395,73 +408,88 @@ func (n LispNode) toLisp() string {
 	// Handle literals directly
 	if n.Lit != nil {
 		if n.Type == "string" {
-			return fmt.Sprintf("\"%v\"", n.Lit) // Return string literals with quotes
+			return fmt.Sprintf("\"%v\"", n.Lit)
 		}
-		return fmt.Sprintf("%v", n.Lit) // Return other literals (like numbers)
+		return fmt.Sprintf("%v", n.Lit)
 	}
 
-	// Handle let expressions
-	if n.Cmd == "let" {
+	// Handle the case where Cmd is a map (nested structure)
+	if cmdMap, ok := n.Cmd.(map[string]interface{}); ok {
+		// Convert the map to a LispNode
+		var innerNode LispNode
+		if cmd, ok := cmdMap["cmd"].(string); ok {
+			innerNode.Cmd = cmd
+		}
+		if args, ok := cmdMap["args"].([]interface{}); ok {
+			for _, arg := range args {
+				if argMap, ok := arg.(map[string]interface{}); ok {
+					var argNode LispNode
+					if args, ok := argMap["args"].([]interface{}); ok {
+						for _, a := range args {
+							if aMap, ok := a.(map[string]interface{}); ok {
+								var aNode LispNode
+								if v, ok := aMap["var"].(string); ok {
+									aNode.Var = v
+								}
+								if l, ok := aMap["lit"].(string); ok {
+									aNode.Lit = l
+									aNode.Type = aMap["type"].(string)
+								}
+								if c, ok := aMap["cmd"].(string); ok {
+									aNode.Cmd = c
+								}
+								if aArgs, ok := aMap["args"].([]interface{}); ok {
+									for _, aa := range aArgs {
+										if aaMap, ok := aa.(map[string]interface{}); ok {
+											var aaNode LispNode
+											if v, ok := aaMap["var"].(string); ok {
+												aaNode.Var = v
+											}
+											if l, ok := aaMap["lit"].(string); ok {
+												aaNode.Lit = l
+												aaNode.Type = aaMap["type"].(string)
+											}
+											aNode.Args = append(aNode.Args, aaNode)
+										}
+									}
+								}
+								argNode.Args = append(argNode.Args, aNode)
+							}
+						}
+					}
+					innerNode.Args = append(innerNode.Args, argNode)
+				}
+			}
+		}
+
+		innerExpr := innerNode.toLisp()
+
+		// Convert arguments to strings
+		args := make([]string, len(n.Args))
+		for i, arg := range n.Args {
+			args[i] = arg.toLisp()
+		}
+
+		return fmt.Sprintf("(%s %s)", innerExpr, strings.Join(args, " "))
+	}
+
+	// Handle lambda expressions
+	if cmd, ok := n.Cmd.(string); ok && cmd == "lambda" {
 		if len(n.Args) < 2 {
-			return "(let ())" // Handle empty let
+			return fmt.Sprintf("(lambda %s ())", n.Args[0].toLisp())
 		}
-		bindings := n.Args[0].toLispLetBindings()
+		params := n.Args[0].toLisp()
 		body := n.Args[1].toLisp()
-		return fmt.Sprintf("(let %s %s)", bindings, body)
+		return fmt.Sprintf("(lambda (%s) %s)", params, body)
 	}
 
-	// Handle defun expressions
-	if n.Cmd == "defun" {
-		if len(n.Args) < 3 {
-			return fmt.Sprintf("(defun %s ())", n.Args[0].toLisp()) // Handle empty defun
-		}
-		funcName := n.Args[0].toLisp()
-		params := n.Args[1].toLisp()
-		body := n.Args[2].toLisp()
-		return fmt.Sprintf("(defun %s (%s) %s)", funcName, params, body)
-	}
-
-	// Handle function expressions (#'( ... ))
-	if n.Cmd == "function" {
-		if len(n.Args) == 1 {
-			return fmt.Sprintf("#'%s", n.Args[0].toLisp())
-		}
-		return fmt.Sprintf("#'(%s)", n.Args[0].toLisp())
-	}
-
-	// Handle list expressions ('( ... ))
-	if n.Cmd == "list" {
+	// Handle regular function calls
+	if cmd, ok := n.Cmd.(string); ok {
 		args := make([]string, len(n.Args))
 		for i, arg := range n.Args {
 			args[i] = arg.toLisp()
 		}
-		return fmt.Sprintf("'(%s)", strings.Join(args, " "))
-	}
-
-	// Handle cond expressions
-	if n.Cmd == "cond" {
-		var clauses []string
-		for _, clause := range n.Args {
-			if len(clause.Args) < 2 {
-				continue // Skip invalid clauses
-			}
-			condition := clause.Args[0].toLisp()
-			consequent := make([]string, len(clause.Args)-1)
-			for i, arg := range clause.Args[1:] {
-				consequent[i] = arg.toLisp()
-			}
-			clauses = append(clauses, fmt.Sprintf("(%s %s)", condition, strings.Join(consequent, " ")))
-		}
-		return fmt.Sprintf("(cond %s)", strings.Join(clauses, " "))
-	}
-
-	// Handle function calls or expressions
-	if n.Cmd != "" {
-		args := make([]string, len(n.Args))
-		for i, arg := range n.Args {
-			args[i] = arg.toLisp()
-		}
-		return fmt.Sprintf("(%s %s)", n.Cmd, strings.Join(args, " "))
+		return fmt.Sprintf("(%s %s)", cmd, strings.Join(args, " "))
 	}
 
 	// If it's a node without a command (like a list), just join the arguments
@@ -496,4 +524,47 @@ func (n LispNode) toLispLetBindings() string {
 		}
 	}
 	return fmt.Sprintf("(%s)", strings.Join(bindings, " "))
+}
+
+// Parse a lambda expression
+func parseLambda(tokens []string) (LispNode, []string, error) {
+	if len(tokens) < 4 {
+		return LispNode{}, tokens, fmt.Errorf("invalid lambda expression: not enough arguments")
+	}
+
+	// Skip "lambda" token
+	tokens = tokens[1:]
+
+	// The first element is the argument list (which is a list of variables, not commands)
+	if tokens[0] != "(" {
+		return LispNode{}, tokens, fmt.Errorf("lambda argument list must start with '('")
+	}
+	argListNode, remaining, err := parseArgList(tokens)
+	if err != nil {
+		return LispNode{}, tokens, err
+	}
+
+	// Parse the function body (everything else until the closing parenthesis)
+	var body []LispNode
+	for len(remaining) > 0 && remaining[0] != ")" {
+		expr, newRemaining, err := parse(remaining)
+		if err != nil {
+			return LispNode{}, tokens, err
+		}
+		body = append(body, expr)
+		remaining = newRemaining
+	}
+
+	// Ensure closing parenthesis
+	if len(remaining) == 0 || remaining[0] != ")" {
+		return LispNode{}, tokens, fmt.Errorf("missing closing parenthesis for lambda expression")
+	}
+
+	return LispNode{
+		Cmd: "lambda",
+		Args: []LispNode{
+			argListNode,  // Argument list
+			{Args: body}, // Function body
+		},
+	}, remaining[1:], nil
 }

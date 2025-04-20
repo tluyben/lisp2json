@@ -1,5 +1,5 @@
 interface LispNode {
-  cmd?: string;
+  cmd?: string | LispNode;
   args?: LispNode[];
   lit?: any;
   type?: string;
@@ -173,6 +173,8 @@ function parseList(tokens: string[]): { node: LispNode; remaining: string[] } {
     return parseDefun(tokens);
   } else if (tokens[0] === 'cond') {
     return parseCond(tokens);
+  } else if (tokens[0] === 'lambda') {
+    return parseLambda(tokens);
   }
 
   const args: LispNode[] = [];
@@ -192,6 +194,13 @@ function parseList(tokens: string[]): { node: LispNode; remaining: string[] } {
     return { node: {}, remaining: remaining.slice(1) };
   }
 
+  // Check if the first argument is a function call (like lambda)
+  if (args[0].cmd) {
+    // If the first argument is a function call, return it as is with the rest of the arguments
+    return { node: { cmd: args[0], args: args.slice(1) }, remaining: remaining.slice(1) };
+  }
+
+  // Otherwise, treat the first argument as a variable name
   return { node: { cmd: args[0].var, args: args.slice(1) }, remaining: remaining.slice(1) };
 }
 
@@ -502,11 +511,21 @@ function toLisp(node: LispNode): string {
     return `(cond ${clauses.join(" ")})`;
   }
 
+  if (node.cmd === "lambda") {
+    if (!node.args || node.args.length < 2) {
+      return `(lambda ${toLisp(node.args![0])} ())`;  // Handle empty defun
+    }
+    
+    // const funcName = toLisp(node.args[0]);
+    const params = toLisp(node.args[0]);
+    const body = toLisp(node.args[1]);
+    return `(lambda (${params}) ${body})`;
+  }
   // Handle function calls or expressions
   if (node.cmd) {
-    if (!node.args) return `(${node.cmd})`;
+    if (!node.args) return `(${typeof node.cmd === 'string' ? node.cmd : toLisp(node.cmd)})`;
     const args = node.args.map(arg => toLisp(arg));
-    return `(${node.cmd} ${args.join(" ")})`;
+    return `(${typeof node.cmd === 'string' ? node.cmd : toLisp(node.cmd)} ${args.join(" ")})`;
   }
   
   // If it's a node without a command (like a list), just join the arguments
@@ -529,4 +548,50 @@ function toLispLetBindings(node: LispNode): string {
     return "";
   }).filter(Boolean);
   return `(${bindings.join(" ")})`;
+}
+
+/**
+ * Parses a lambda expression
+ * @param tokens The list of tokens
+ * @returns The parsed LispNode and remaining tokens
+ */
+function parseLambda(tokens: string[]): { node: LispNode; remaining: string[] } {
+  if (tokens.length < 4) {
+    throw new Error("Invalid lambda expression: not enough arguments");
+  }
+
+  // Skip "lambda" token
+  tokens = tokens.slice(1);
+
+  // The first element is the argument list (which is a list of variables, not commands)
+  if (tokens[0] !== '(') {
+    throw new Error("Lambda argument list must start with '('");
+  }
+  const { node: argListNode, remaining: afterArgList } = parseArgList(tokens);
+
+  // Parse the function body (everything else until the closing parenthesis)
+  const body: LispNode[] = [];
+  let remaining = afterArgList;
+  
+  while (remaining.length > 0 && remaining[0] !== ')') {
+    const { node, remaining: newRemaining } = parse(remaining);
+    body.push(node);
+    remaining = newRemaining;
+  }
+
+  // Ensure closing parenthesis
+  if (remaining.length === 0 || remaining[0] !== ')') {
+    throw new Error("Missing closing parenthesis for lambda expression");
+  }
+
+  return {
+    node: {
+      cmd: "lambda",
+      args: [
+        argListNode,          // Argument list
+        { args: body }        // Function body
+      ]
+    },
+    remaining: remaining.slice(1)
+  };
 } 

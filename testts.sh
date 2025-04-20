@@ -6,7 +6,7 @@ set -e
 npm run build
 
 # Run tests for each example
-for i in {1..12}
+for i in {1..13}
 do
     echo "Testing example$i.lsp"
     
